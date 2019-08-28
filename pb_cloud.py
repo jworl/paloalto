@@ -19,8 +19,10 @@ import hashlib
 import logging
 
 logger = logging.getLogger(__name__)
-fh = logging.FileHandler('/root/pan_backups.log')
+fh = logging.FileHandler('/var/log/pan_backups.log')
 fh.setLevel(logging.INFO)
+formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
+fh.setFormatter(formatter)
 logger.addHandler(fh)
 
 
@@ -36,10 +38,10 @@ def _REQ(URL,FILENAME):
             f.write(R.content)
         return _CONVERT(FILENAME)
     elif R.status_code == 403:
-        logging.error("[{}] Invalid credentials".format(URL))
+        logger.error("[{}] Invalid credentials".format(URL))
         exit(2)
     else:
-        logging.critical('[{}] {}'.format(URL, R.raise_for_status()))
+        logger.critical('[{}] {}'.format(URL, R.raise_for_status()))
         exit(2)
 
 def _GET_KEYS(user):
@@ -61,7 +63,7 @@ def _GET_TOKEN(FW, D, U, p):
     if TOKEN['response']['@status'] == "success":
         return str(TOKEN['response']['result']['key'])
     else:
-        logging.critical('[{}] {}'.format(FW, TOKEN['response']))
+        logger.critical('[{}] {}'.format(FW, TOKEN['response']))
         exit(2)
 
 def _GET_BACKUP(F, D, T, N):
@@ -106,11 +108,11 @@ def main():
     new_hash = _GET_BACKUP(FW, dev, token, now)
 
     if existing_hash == new_hash:
-        logging.info("[{}] No changes".format(FW))
+        logger.info("[{}] No changes".format(FW))
         exit(0)
     else:
-        logging.info("[{}] Existing: {}".format(FW, existing_hash))
-        logging.info("[{}] New: {}".format(FW, new_hash))
+        logger.info("[{}] Existing: {}".format(FW, existing_hash))
+        logger.info("[{}] New: {}".format(FW, new_hash))
         old_path = '{}/{}'.format(bucket, existing_file)
         new_key = '{}_{}.xml'.format(FW, existing_ts)
         s3r.Object(bucket, new_key).copy_from(CopySource=old_path)
@@ -119,7 +121,7 @@ def main():
 
 if __name__ == "__main__":
     if len(argv) != 4:
-        logging.warning("Usage: {} $firewall $username $aws-zone".format(argv[0]))
+        logger.warning("Usage: {} $firewall $username $aws-zone".format(argv[0]))
         exit(2)
     else:
         main()
