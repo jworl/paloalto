@@ -71,15 +71,15 @@ def _PULLDATA(dev, T, J):
     d = _GET(dev, PAYLOAD)
     while ( d["response"]["result"]["job"]["status"] ) != "FIN" and ( d["response"]["result"]["log"]["logs"]["@progress"] != "100" ):
         sleep(1)
-        print("Job Status: {}".format(d["response"]["result"]["job"]["status"]))
-        print("Count: {}".format(d["response"]["result"]["log"]["logs"]["@count"]))
-        print("Progress: {}".format(d["response"]["result"]["log"]["logs"]["@progress"]))
+        # print("Job Status: {}".format(d["response"]["result"]["job"]["status"]))
+        # print("Count: {}".format(d["response"]["result"]["log"]["logs"]["@count"]))
+        # print("Progress: {}".format(d["response"]["result"]["log"]["logs"]["@progress"]))
         d = _GET(dev, PAYLOAD)
 
-    if "entry" in d["response"]["result"]["log"]["logs"]:
+    if int(d["response"]["result"]["log"]["logs"]["@count"]) > 0:
         return d["response"]["result"]["log"]["logs"]["entry"]
     else:
-        return d["response"]
+        return None
 
 def main(P):
     TOKEN = _TOKEN(P)
@@ -93,14 +93,43 @@ def main(P):
         t = (d['srcuser'], d['machinename'], d['matchname'])
         if t not in UNIQUE:
             UNIQUE.append(t)
-    pp.pprint(UNIQUE)
+    # pp.pprint(UNIQUE)
     SANITY = {}
+    TRUE_POSITIVE = []
+    QUESTIONABLE = []
     for t in UNIQUE:
         SANITY[t[0]] = {}
         SANITY[t[0]]["query"] = "( receive_time in last-24-hrs ) and ( matchname eq compliant ) and ( user.src eq '{}' ) and ( machinename eq {} )".format(t[0], t[1])
         SANITY[t[0]]["jobid"] = _CREATEJOB(P.DEVICE, TOKEN, SANITY[t[0]]["query"])
         SANITY[t[0]]["data"] = _PULLDATA(P.DEVICE, TOKEN, SANITY[t[0]]["jobid"])
-        pp.pprint(SANITY[t[0]]["data"])
+        if SANITY[t[0]]["data"] is None:
+            TRUE_POSITIVE.append(t)
+        else:
+            QUESTIONABLE.append(t)
+    print("High confidence:")
+    pp.pprint(TRUE_POSITIVE)
+
+    STAGE3 = {}
+    for t in QUESTIONABLE:
+        STAGE3[t[0]] = {}
+        STAGE3[t[0]]["query"] = "( receive_time in last-24-hrs ) and (( matchname eq compliant ) or ( matchname eq non-compliant )) and ( user.src eq '{}' ) and ( machinename eq {} )".format(t[0], t[1])
+        STAGE3[t[0]]["jobid"] = _CREATEJOB(P.DEVICE, TOKEN, STAGE3[t[0]]["query"])
+        STAGE3[t[0]]["data"] = _PULLDATA(P.DEVICE, TOKEN, STAGE3[t[0]]["jobid"])
+        if STAGE3[t[0]]["data"] is None:
+            print("Something went wrong")
+            print(t)
+        else:
+            VERBOSE_CHECK = []
+            for d in STAGE3[t[0]]["data"]:
+                T = (d['time_generated'], d['srcuser'], d['machinename'], d['matchname'])
+                if T not in VERBOSE_CHECK:
+                    VERBOSE_CHECK.append(T)
+            STAGE3[t[0]]["tuples"] = VERBOSE_CHECK
+
+    for user, data in STAGE3.items():
+        print("data for {}:".format(user))
+        pp.pprint(data["tuples"])
+        print("\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Palo Alto log exporter')
